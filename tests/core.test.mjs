@@ -4,6 +4,7 @@ import {search,exampleWalls} from '../src/algorithms.ts';
 import {decode,fresh,invalidate} from '../src/store.ts';
 import {recommend} from '../src/recommend.ts';
 import {generateReply} from '../src/chat.ts';
+import {labs} from '../src/data.ts';
 test('BFS and A* return valid identical shortest lengths on varied maps',()=>{
  const maps=[[],exampleWalls,[1,10],Array.from({length:10},(_,i)=>40+i)];
  let seed=73;
@@ -13,8 +14,17 @@ test('BFS and A* return valid identical shortest lengths on varied maps',()=>{
 });
 test('invalid or old storage is safely replaced',()=>{for(const raw of ['broken','null','{}',JSON.stringify({...fresh(),version:0}),JSON.stringify({...fresh(),messages:[null]}),JSON.stringify({...fresh(),experiments:[{}]}),JSON.stringify({...fresh(),step:9})])assert.deepEqual(decode(raw),fresh());});
 test('saved records survive restoration and upstream changes',()=>{
- const s=fresh();s.interest='길찾기';s.selected=['search'];s.reasons.search='탐색이 궁금해서';s.statuses=['완료','완료','완료','완료'];s.experiments=[{id:'test',date:'2026-10-03',labIds:['search'],walls:exampleWalls,prediction:'A*가 적을 것',observation:'경로 길이는 같음',bfs:search(exampleWalls,'BFS'),astar:search(exampleWalls,'A*')}];s.messages=[{role:'user',text:'요약'}];s.reflection.next='더 탐색하기';
+ const s=fresh();s.interest='보안';s.selected=[labs[22].id];s.reasons[s.selected[0]]='보안이 궁금해서';s.statuses=['완료','완료','완료','완료'];s.experiments=[{id:'test',date:'2026-10-03',labIds:[labs[22].id],walls:exampleWalls,prediction:'A*가 적을 것',observation:'경로 길이는 같음',bfs:search(exampleWalls,'BFS'),astar:search(exampleWalls,'A*')}];s.messages=[{role:'user',text:'요약'}];s.reflection.next='더 탐색하기';
  const restored=decode(JSON.stringify(s));assert.deepEqual(restored,s);const changed=invalidate(restored,0);assert.deepEqual(changed.statuses,['완료','재검토 필요','재검토 필요','재검토 필요']);assert.deepEqual(changed.experiments,s.experiments);assert.deepEqual(changed.messages,s.messages);
 });
-test('recommendation evidence matches tags and unsupported input has empty result',()=>{const r=recommend('로봇 길찾기');assert.ok(r.length>0);assert.ok(r.every(x=>x.matches.every(t=>x.lab.tags.includes(t)&&'로봇 길찾기'.includes(t))));assert.deepEqual(recommend('해양 생태학'),[]);});
-test('demo chat uses context without mutating saved records',async()=>{const s=fresh();s.interest='길찾기';s.selected=['search','robot'];const original=JSON.stringify(s);assert.match(await generateReply('선택한 연구실은 어떤 차이가 있어?',s),/로봇/);assert.match(await generateReply('내 탐색 내용을 정리해줘.',s),/길찾기/);assert.match(await generateReply('오늘 날씨?',s),/지원하지/);assert.equal(JSON.stringify(s),original);});
+test('all CSV catalog items appear, with only eight researched security details',()=>{
+ assert.equal(labs.length,59);
+ assert.equal(labs.filter(l=>l.type==='연구실').length,53);
+ assert.equal(new Set(labs.map(l=>l.id)).size,labs.length);
+ const detailed=labs.filter(l=>l.detail);
+ assert.equal(detailed.length,8);
+ assert.ok(detailed.every(l=>l.category==='보안·소프트웨어공학'&&l.detail.papers.every(p=>p.title&&p.year&&p.url.startsWith('https://'))));
+ assert.ok(labs.every(l=>!l.professor.includes('가상')&&l.officialSources.length>0));
+});
+test('recommendation evidence matches catalog fields and unsupported input has empty result',()=>{const r=recommend('보안');assert.ok(r.length>=8);assert.ok(r.every(x=>x.matches.every(t=>x.lab.tags.includes(t)&&'보안'.includes(t))));assert.deepEqual(recommend('해양 생태학'),[]);});
+test('catalog chat uses context without mutating saved records',async()=>{const s=fresh();s.interest='보안';s.selected=[labs[22].id,labs[23].id];const original=JSON.stringify(s);assert.match(await generateReply('선택한 연구실은 어떤 차이가 있어?',s),/보안/);assert.match(await generateReply('내 탐색 내용을 정리해줘.',s),/보안/);assert.match(await generateReply('오늘 날씨?',s),/저장된 연구실 정보/);assert.equal(JSON.stringify(s),original);});
