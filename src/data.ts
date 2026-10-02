@@ -118,7 +118,8 @@ export const labs:Lab[]=catalogRows.map(([department,category,professor,name,typ
  };
 });
 export const dataCheckedAt='2026-10-03';
-export const taughtCourses:Record<string,{name:string;code:string;time:string}[]>={
+export type TaughtCourse={name:string;code:string;time:string;term?:string;level?:string;learning?:string};
+export const taughtCourses:Record<string,TaughtCourse[]>={
  '구형준':[
   {name:'소프트웨어보안연구논문작성',code:'ESW5042-41',time:'수[DD]13:30-14:45 【1.5h(ON)+1.5h(OFF)】'},
   {name:'컴퓨터네트워크개론',code:'(SWE3022-41)',time:'수[EE]15:00-16:15 【1.5h(ON)+1.5h(OFF)】'}
@@ -129,3 +130,11 @@ export const taughtCourses:Record<string,{name:string;code:string;time:string}[]
   {name:'정보보호개론',code:'SWE3025-41',time:'월[DD]13:30-14:45,수[CC]12:00-13:15'}
  ]
 };
+
+// Existing learning topics are not verified university course records.
+export function relatedCourses(lab:Lab){
+ return (lab.detail?.learningTopics||[]).map((name,index)=>({
+  id:`related:${lab.id}:${index}`,name,code:undefined as string|undefined,
+  note:'연구 이해를 위한 학습 주제입니다. 실제 개설 과목명·강의코드·학기·담당 교수는 미확인입니다.'
+ }));
+}

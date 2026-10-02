@@ -1,5 +1,6 @@
 import {defineConfig,loadEnv,type Plugin} from 'vite';
 import {askGemini} from './server/gemini.ts';
+import {askPlan} from './server/plan.ts';
 
 function geminiDev(apiKey:string,model:string):Plugin{
  return {name:'gemini-dev-api',configureServer(server){
@@ -10,9 +11,9 @@ function geminiDev(apiKey:string,model:string):Plugin{
    req.on('end',async()=>{
     try{
      const body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');
-     const text=await askGemini(body,apiKey,model);
+     const result=body.mode==='plan'?{plan:await askPlan(body,apiKey,model)}:{text:await askGemini(body,apiKey,model)};
      res.setHeader('Content-Type','application/json');
-     res.end(JSON.stringify({text}));
+     res.end(JSON.stringify(result));
     }catch(error){
      res.statusCode=500;
      res.setHeader('Content-Type','application/json');

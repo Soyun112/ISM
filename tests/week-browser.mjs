@@ -1,0 +1,97 @@
+// Uses controlled API responses to exercise the UI without paid external calls.
+import {chromium} from 'playwright';
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {fresh} from '../src/store.ts';
+import {labs} from '../src/data.ts';
+import {resourcesFor,sourceBasis,validatePlanResponse} from '../src/planning.ts';
+const browser=await chromium.launch({executablePath:process.env.TEST_BROWSER_PATH||'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',headless:true});
+const page=await browser.newPage({viewport:{width:1500,height:1000},timezoneId:'Asia/Seoul',acceptDownloads:true});
+const url=process.env.TEST_BASE_URL||'http://127.0.0.1:5180/';
+const sec=labs.find(l=>l.professor==='구형준'),hit=labs.find(l=>l.professor==='최형기');
+const errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));
+let failNext=false,invalidNext=false;
+await page.route('**/api/chat',async route=>{
+ const body=route.request().postDataJSON();requests.push(body);
+ if(body.mode!=='plan'){await route.fulfill({json:{text:'현재 활동의 완료 기준부터 확인해 보세요. 계획은 그대로 유지됩니다.'}});return;}
+ await new Promise(r=>setTimeout(r,150));
+ if(failNext){failNext=false;await route.fulfill({status:500,json:{error:'테스트용 생성 실패. 다시 시도해 주세요.'}});return;}
+ const resources=resourcesFor(body.context.selected,body.context.experienceSelection?.topicId);
+ const previous=body.previous;
+ const pending=previous?previous.activities.filter(a=>!a.done):[{id:'activity-1'},{id:'activity-2'}];
+ const kind={deepen:'대표 연구',compare:'두 연구 문제',basics:'핵심 용어'}[body.input.direction];
+ const raw=pending.map((a,i)=>({id:a.id,date:previous?a.date:body.input.availableDates[i%body.input.availableDates.length],title:kind+' 한 문장 적기',minutes:body.adjustment?10:15,reason:'입력한 보안 관심을 확인하기 위한 활동입니다.',task:kind+' 하나를 골라 자신의 말로 한 문장을 쓰세요.',completion:'한 문장과 남은 질문 하나를 남기면 완료입니다.',resourceIds:[resources[0].id],question:'새롭게 이해한 점은 무엇인가요?'}));
+ const activities=validatePlanResponse({activities:raw},body.input,resources,previous);
+ if(invalidNext){invalidNext=false;activities.find(a=>!a.done).resourceIds=['made-up-source'];}
+ await route.fulfill({json:{plan:{id:previous?.id||'test-plan',revision:(previous?.revision??-1)+1,createdAt:new Date().toISOString(),input:body.input,basis:sourceBasis(body.context),activities}}});
+});
+async function state(){return page.evaluate(()=>JSON.parse(localStorage.getItem('lab-map-v1')));}
+try{
+ await page.goto(url);
+ const seed=fresh();seed.step=3;seed.version=3;delete seed.week;seed.interest='보안';seed.selected=[sec.id,hit.id];seed.reasons[sec.id]='자료의 신뢰성이 궁금해서';seed.courseIds=['related:'+sec.id+':0'];seed.experienceSelection={labId:sec.id,topicId:'rag-poison-defense'};seed.rag={...seed.rag,executed:['normal','attack','defense'],displayedStage:'defense',observation:'가짜 문서를 제외하니 14일로 돌아왔다'};seed.reflection.interesting='자료 선택이 답변에 영향을 준 점';seed.messages=[{role:'user',text:'앞 페이지의 대화'},{role:'assistant',text:'앞 페이지의 답변'}];
+ await page.evaluate(s=>localStorage.setItem('lab-map-v1',JSON.stringify(s)),seed);await page.reload();
+ await page.getByRole('heading',{name:'내 탐색 정리하기',exact:true}).waitFor();
+ assert.equal(await page.getByRole('navigation',{name:'탐색 과정'}).count(),1);
+ assert.equal(await page.locator('#opinion,#result-map,#next-action').count(),3);
+ await page.getByRole('button',{name:'내 탐색과 다음 일주일 →',exact:true}).click();
+ await page.getByRole('heading',{name:'내 탐색과 다음 일주일',exact:true}).waitFor();
+ assert.equal(await page.getByRole('navigation',{name:'탐색 과정'}).count(),0);
+ assert.equal(await page.locator('.journey-lab').count(),2);assert.equal(await page.locator('.journey-lab.is-experienced').count(),1);
+ assert.ok((await page.locator('.journey-lab.is-experienced').innerText()).includes('SecAI'));
+ await page.locator('.journey-map').getByText('자료의 신뢰성이 궁금해서',{exact:false}).waitFor();
+ await page.locator('.journey-map').getByText('가짜 문서를 제외하니 14일로 돌아왔다',{exact:false}).waitFor();
+ await page.getByText('앞 페이지의 대화',{exact:true}).waitFor();
+ assert.equal((await state()).week.input.direction,null);assert.equal((await state()).week.plan,null);
+ const today=await page.evaluate(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');});
+ assert.equal(await page.getByLabel('시작 날짜',{exact:true}).inputValue(),today);
+ await page.getByRole('button',{name:'탐색 결과와 계획 저장하기',exact:true}).click();
+ await page.getByText('계획 없이 탐색 결과를 이 브라우저에 저장했습니다.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'← 이전 페이지로 돌아가기',exact:true}).click();
+ assert.equal(await page.locator('#opinion,#result-map,#next-action').count(),3);
+ await page.getByRole('button',{name:'내 탐색과 다음 일주일 →',exact:true}).click();
+ await page.getByRole('button',{name:/두 연구실 사이에서 고민돼요/}).click();
+ await page.getByLabel('시작 날짜',{exact:true}).fill('2026-10-03');
+ await page.getByLabel('선택한 날짜에 투자할 시간',{exact:true}).selectOption('15');
+ await page.locator('.available-days button').nth(0).click();await page.locator('.available-days button').nth(2).click();
+ const generate=page.getByRole('button',{name:'나의 일주일 탐색 계획 만들기',exact:true});
+ await generate.click();await page.getByText('계획을 만들고 있어요…',{exact:true}).waitFor();
+ await page.locator('.week-schedule').waitFor();
+ assert.equal(await page.locator('.week-day').count(),7);
+ let current=await state();assert.equal(current.week.plan.activities.length,2);assert.ok(current.week.plan.activities.every(a=>current.week.input.availableDates.includes(a.date)&&a.minutes<=15));
+ assert.equal(requests.filter(r=>r.mode==='plan').length,1);
+ await page.getByLabel('이 활동 완료',{exact:true}).check();await page.getByLabel('활동 한 줄 메모 선택 입력').fill('완료한 활동의 메모');
+ const locked=(await state()).week.plan.activities[0];
+ await page.locator('.week-day button').nth(1).click();await page.getByLabel('활동 한 줄 메모 선택 입력').fill('다음에 확인할 질문');
+ const originalPlan=(await state()).week.plan;
+ await page.getByRole('button',{name:/아직 어려워서 기초부터 알고 싶어요/}).click();
+ assert.deepEqual((await state()).week.plan,originalPlan);
+ await page.getByRole('button',{name:'시간 줄이기',exact:true}).click();
+ await page.getByRole('region',{name:'계획 수정안'}).waitFor();
+ assert.deepEqual((await state()).week.plan,originalPlan);
+ assert.equal((await state()).week.proposal.plan.activities.find(a=>!a.done).minutes,10);
+ await page.getByLabel('활동 한 줄 메모 선택 입력').fill('수정안 생성 후 남긴 메모');
+ await page.getByRole('button',{name:'계획에 반영하기',exact:true}).click();
+ current=await state();assert.deepEqual(current.week.plan.activities[0],locked);assert.equal(current.week.plan.activities[1].note,'수정안 생성 후 남긴 메모');assert.equal(current.week.plan.input.direction,'basics');assert.equal(current.week.proposal,null);
+ await page.locator('.week-day button').nth(1).click();
+ await page.getByText('활동 제목·날짜·시간 수정하기',{exact:true}).click();
+ await page.getByLabel('활동 제목',{exact:true}).fill('내가 정한 활동 제목');await page.getByLabel('소요 시간(분)',{exact:true}).fill('8');await page.getByRole('button',{name:'활동 수정 저장',exact:true}).click();
+ assert.equal((await state()).week.plan.activities[1].title,'내가 정한 활동 제목');
+ const beforeQuestion=(await state()).week.plan;
+ await page.getByRole('button',{name:'이 활동을 어떻게 시작하면 돼? ↗',exact:true}).click();
+ await page.getByText('현재 활동의 완료 기준부터 확인해 보세요. 계획은 그대로 유지됩니다.',{exact:true}).waitFor();
+ assert.deepEqual((await state()).week.plan,beforeQuestion);
+ assert.equal(requests.at(-1).context.week.activeId,'activity-2');
+ failNext=true;await generate.click();await page.getByText('테스트용 생성 실패. 다시 시도해 주세요.',{exact:true}).waitFor();assert.deepEqual((await state()).week.plan,beforeQuestion);
+ invalidNext=true;await page.getByRole('button',{name:'계획 생성 다시 시도',exact:true}).click();await page.getByText('계획 형식을 확인하지 못했습니다. 기존 기록은 그대로 유지됩니다.',{exact:true}).waitFor();assert.deepEqual((await state()).week.plan,beforeQuestion);
+ await page.getByRole('button',{name:'탐색 결과와 계획 저장하기',exact:true}).click();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Markdown 다운로드',exact:true}).click();const md=await readFile(await (await download).path(),'utf8');assert.match(md,/완료한 활동의 메모/);assert.match(md,/내가 정한 활동 제목/);assert.match(md,/https:\/\/secai.skku.edu/);
+ const saved=(await state()).week;await page.reload();assert.deepEqual((await state()).week,saved);assert.equal((await state()).step,4);
+ await page.getByRole('button',{name:'연구실 다시 비교하기 →',exact:true}).click();await page.locator('.lab-comparison').waitFor();assert.deepEqual((await state()).week,saved);
+ await page.getByRole('button',{name:'이전 화면',exact:true}).click();await page.getByRole('button',{name:hit.name+' 후보에서 해제',exact:true}).click();
+ await page.getByRole('button',{name:/04.*내 탐색 정리하기/}).click();await page.getByRole('button',{name:'내 탐색과 다음 일주일 →',exact:true}).click();
+ await page.getByText('이 계획은 이전 관심·연구실·체험 기록을 기준으로 만들었어요.',{exact:false}).waitFor();assert.deepEqual((await state()).week.plan,saved.plan);
+ await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.getByRole('textbox',{name:'도우미에게 질문'}).scrollIntoViewIfNeeded();assert.equal(await page.getByRole('textbox',{name:'도우미에게 질문'}).isVisible(),true);
+ assert.deepEqual(errors,[]);
+ console.log('PASS: existing page 4 retained, new page 5, real journey data, optional no-plan save, direction/date/time inputs, plan validation, preview/apply, completed work and latest notes preserved, manual edits, ordinary chat read-only, API failure retention, export, reload, source-change notice, mobile layout');
+}finally{await browser.close();}
