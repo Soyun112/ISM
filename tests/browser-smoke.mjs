@@ -1,0 +1,39 @@
+// Optional: npm.cmd install --no-save playwright, then node tests/browser-smoke.mjs
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+const browser=await chromium.launch({executablePath:'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',headless:true});
+const page=await browser.newPage({viewport:{width:1440,height:1000}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+try{
+ await page.goto('http://127.0.0.1:5173/');
+ await page.getByRole('button',{name:'+ 길찾기',exact:true}).click();
+ await page.getByRole('button',{name:'연구실 후보 찾기 →'}).click();
+ await page.getByRole('button',{name:'관심 후보 선택',exact:true}).first().click();
+ await page.getByRole('button',{name:'관심 후보 선택',exact:true}).first().click();
+ await page.getByRole('button',{name:'선택한 연구실 비교하기 →'}).click();
+ await page.getByRole('button',{name:'관심 과목 저장',exact:true}).first().click();
+ await page.getByRole('button',{name:'교수님 수업과 관련 과목은 어떻게 달라? ↗'}).click();
+ await page.getByText('교수님 담당 수업은 누가 가르치는지에 대한 정보이고,',{exact:false}).waitFor();
+ await page.getByRole('button',{name:'비교 내용 확인 완료 →'}).click();
+ await page.getByLabel('실험 전 예상').fill('A*가 적은 칸을 탐색할 것 같다');
+ await page.getByRole('button',{name:'BFS와 A* 비교 실행'}).click();
+ await page.getByLabel('실험 후 관찰').fill('최단 경로 길이는 같고 탐색량이 달랐다');
+ await page.getByRole('button',{name:'실험 결과 저장',exact:true}).click();
+ await page.getByRole('button',{name:'경로 없는 지도'}).click();
+ await page.getByRole('button',{name:'BFS와 A* 비교 실행'}).click();
+ assert.equal(await page.getByText('경로 없음',{exact:true}).count(),2);
+ await page.getByRole('button',{name:'내 선택과 준비 정리하기 →',exact:true}).click();
+ await page.getByRole('button',{name:'입문 자료 읽기',exact:true}).click();
+ await page.getByRole('button',{name:'준비 기록 저장',exact:true}).click();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Markdown 다운로드 ↓'}).click();assert.match((await download).suggestedFilename(),/\.md$/);
+ await page.reload();
+ const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('lab-map-v1')));
+ assert.equal(stored.experiments.length,1);assert.equal(stored.selected.length,2);assert.equal(stored.courseIds.length,1);assert.equal(stored.statuses[3],'완료');assert.equal(stored.messages.length,2);
+ await page.getByRole('button',{name:'더 탐색하기 →',exact:true}).click();
+ await page.getByRole('textbox',{name:'어떤 분야가 궁금한가요?'}).fill('자연어');
+ const changed=await page.evaluate(()=>JSON.parse(localStorage.getItem('lab-map-v1')));
+ assert.deepEqual(changed.statuses.slice(1),['재검토 필요','재검토 필요','재검토 필요']);assert.equal(changed.experiments.length,1);
+ await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'탐색 도우미 닫기'}).click();
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+ assert.deepEqual(errors,[]);console.log('PASS: browser flow, persistence, chat, blocked path, Markdown download, review states, mobile width');
+}finally{await browser.close();}
