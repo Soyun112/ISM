@@ -118,3 +118,14 @@ export const labs:Lab[]=catalogRows.map(([department,category,professor,name,typ
  };
 });
 export const dataCheckedAt='2026-10-03';
+export const taughtCourses:Record<string,{name:string;code:string;time:string}[]>={
+ '구형준':[
+  {name:'소프트웨어보안연구논문작성',code:'ESW5042-41',time:'수[DD]13:30-14:45 【1.5h(ON)+1.5h(OFF)】'},
+  {name:'컴퓨터네트워크개론',code:'(SWE3022-41)',time:'수[EE]15:00-16:15 【1.5h(ON)+1.5h(OFF)】'}
+ ],
+ '최형기':[
+  {name:'사이버보안기초와응용',code:'GSAS009-81',time:'목[02]20:00-21:20'},
+  {name:'인터넷통신개론',code:'GSIS019-81',time:'목[01]18:30-19:50'},
+  {name:'정보보호개론',code:'SWE3025-41',time:'월[DD]13:30-14:45,수[CC]12:00-13:15'}
+ ]
+};

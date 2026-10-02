@@ -2,10 +2,13 @@ import type {State} from './store.ts';
 import {labs} from './data.ts';
 import {recommend} from './recommend.ts';
 
-export type ChatContext=Pick<State,'step'|'interest'|'selected'|'reflection'|'prep'>;
+export type ChatContext=Pick<State,'step'|'interest'|'selected'|'reflection'|'prep'|'rag'>;
 
 export async function generateReply(question:string,context:ChatContext):Promise<string>{
  const selected=labs.filter(l=>context.selected.includes(l.id));
+ if(/가짜 문서|30일|공격 성공/.test(question))return '이 화면은 미리 구성한 예시입니다. 가짜 문서가 들어가면 예시 답변은 30일이 됩니다. 공격 성공률은 계산하지 않았습니다.';
+ if(/탐지|걸러|방어 필터|제외된 문서/.test(question))return '회색 문서는 이 시나리오에 미리 지정한 의심 문서입니다. 탐지 결과가 아닙니다. 정상 문서까지 빠지면 답변에 필요한 근거가 줄어들 수 있습니다.';
+ if(/정상 자료|논문 알고리즘|14일/.test(question))return '정상 자료만 볼 때 예시 답변은 14일입니다. 논문 알고리즘을 실행하지 않았고, 문서와 답변은 미리 구성한 예시입니다.';
  if(/추천|이유|좁혀/.test(question)){
   return recommend(context.interest).slice(0,8).map(({lab,matches})=>`${lab.name} (${lab.professor}): ${matches.join(', ')} 관련 항목이 일치합니다.`).join('\n')||'관심 분야를 입력하면 CSV의 연구 분야와 분류를 기준으로 후보를 찾을 수 있어요. 선택은 직접 해 주세요.';
  }

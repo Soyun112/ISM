@@ -3,8 +3,8 @@ export const brand = '연구실 탐색 지도';
 // Keep the forward four-screen flow from main; only the catalog content changes.
 export const steps = [
  {title:'관심 연구실 찾기',description:'관심 분야와 연결되는 실제 연구실·연구 항목을 찾아보세요.',button:'후보 찾기',next:'선택한 연구실 알아보기'},
- {title:'연구와 수업 알아보기',description:'연구 질문, 방법, 최근 논문과 학습 주제를 비교해 보세요.',button:'체험 전 정리 저장',next:'작은 연구 체험하기'},
- {title:'작은 연구 체험하기',description:'학부연구생 첫 주처럼, 보안 연구의 분야를 하나씩 열어 보세요.',next:'내 탐색 정리하기'},
+ {title:'연구와 수업 알아보기',description:'연구 질문, 방법, 최근 논문과 학습 주제를 비교한 뒤 체험할 연구실을 하나 골라 주세요.',button:'이 연구실로 체험하기',next:'작은 연구 체험하기'},
+ {title:'작은 연구 체험하기',description:'미리 구성한 예시로, 잘못된 자료가 섞이면 답변이 어떻게 달라지는지 확인해 보세요.',button:'저장하고 내 탐색 정리하기',next:'내 탐색 정리하기'},
  {title:'내 탐색 정리하기',description:'알게 된 점과 다음 행동을 한곳에 정리해 보세요.',button:'의견 저장'}
 ];
 
@@ -47,6 +47,8 @@ export const copy = {
  notFinal:'이 탐색만으로 적성이나 연구 능력을 판단하지 않습니다. 최종 연구실을 고르지 않아도 괜찮아요.',
  opinionGuide:'의견을 적고 저장하면 아래 탐색 결과에 반영돼요. 의견을 쓰기 전에도 오른쪽 탐색 도우미에게 물어볼 수 있어요.',
  prepGuide:'지금까지 고른 관심과 연구실, 공식 자료를 바탕으로 다음 질문을 정리해 보세요.',
+ chooseLab:'비교한 후보 중에서 체험할 연구실을 하나만 고르세요.',
+ confirmLab:'이 연구실로 다음 화면에서 간단한 체험을 합니다. 고른 연구실이 맞는지 확인한 뒤 넘어가세요.',
  blank:'미작성',
  chatHello:'안녕하세요! 관심 분야부터 준비 계획까지 함께 정리해요. 아래 예시 질문을 눌러 보세요.',
  chatDemo:'저장된 자료 안내 · 외부 검색 없음',

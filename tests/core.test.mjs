@@ -5,7 +5,7 @@ import {decode,fresh,invalidate} from '../src/store.ts';
 import {recommend} from '../src/recommend.ts';
 import {generateReply} from '../src/chat.ts';
 import {emptyRag,ragMarkdown} from '../src/rag.ts';
-import {labs} from '../src/data.ts';
+import {labs,taughtCourses} from '../src/data.ts';
 test('BFS and A* return valid identical shortest lengths on varied maps',()=>{
  const maps=[[],exampleWalls,[1,10],Array.from({length:10},(_,i)=>40+i)];
  let seed=73;
@@ -35,3 +35,9 @@ test('all CSV catalog items appear, with only eight researched security details'
 test('recommendation evidence matches catalog fields and unsupported input has empty result',()=>{const r=recommend('보안');assert.ok(r.length>=8);assert.ok(r.every(x=>x.matches.every(t=>x.lab.tags.includes(t)&&'보안'.includes(t))));assert.deepEqual(recommend('해양 생태학'),[]);});
 test('catalog chat uses context without mutating saved records',async()=>{const s=fresh();s.interest='보안';s.selected=[labs[22].id,labs[23].id];const original=JSON.stringify(s);assert.match(await generateReply('선택한 연구실은 어떤 차이가 있어?',s),/보안/);assert.match(await generateReply('내 탐색 내용을 정리해줘.',s),/보안/);assert.match(await generateReply('오늘 날씨?',s),/저장된 연구실 정보/);assert.equal(JSON.stringify(s),original);});
 test('search review note stays out of markdown until saved',()=>{assert.equal(ragMarkdown(emptyRag()),'');const note=ragMarkdown({...emptyRag(),committed:true,rule:'날짜가 있으면 보류한다'});assert.match(note,/검색 결과 묶음 점검/);assert.equal(note.includes('0.89'),false);});
+test('recorded lecture sheets stay on the named professors',()=>{
+ assert.deepEqual(taughtCourses['구형준'].map(c=>[c.name,c.code,c.time]),[['소프트웨어보안연구논문작성','ESW5042-41','수[DD]13:30-14:45 【1.5h(ON)+1.5h(OFF)】'],['컴퓨터네트워크개론','(SWE3022-41)','수[EE]15:00-16:15 【1.5h(ON)+1.5h(OFF)】']]);
+ assert.deepEqual(taughtCourses['최형기'].map(c=>[c.name,c.code,c.time]),[['사이버보안기초와응용','GSAS009-81','목[02]20:00-21:20'],['인터넷통신개론','GSIS019-81','목[01]18:30-19:50'],['정보보호개론','SWE3025-41','월[DD]13:30-14:45,수[CC]12:00-13:15']]);
+ assert.ok(labs.some(l=>l.professor==='구형준'&&taughtCourses[l.professor]));
+});
+test('prepared rag example stays labeled as an example',async()=>{const s=fresh();s.rag={stage:'attack',observation:'답변이 바뀌었다',planSaved:false,studyIds:[]};assert.match(await generateReply('가짜 문서가 들어가면 답변은 어떻게 바뀌나요?',s),/30일/);assert.match(await generateReply('제외된 문서는 실제 탐지 결과인가요?',s),/미리 지정/);assert.equal(s.rag.observation,'답변이 바뀌었다');});
