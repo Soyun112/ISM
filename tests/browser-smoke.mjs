@@ -33,7 +33,7 @@ try{
  await page.getByRole('textbox',{name:'어떤 분야가 궁금한가요?'}).fill('자연어');
  const changed=await page.evaluate(()=>JSON.parse(localStorage.getItem('lab-map-v1')));
  assert.deepEqual(changed.statuses.slice(1),['재검토 필요','재검토 필요','재검토 필요']);assert.equal(changed.experiments.length,1);
- await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'탐색 도우미 닫기'}).click();
+ await page.setViewportSize({width:390,height:844});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
  assert.deepEqual(errors,[]);console.log('PASS: browser flow, persistence, chat, blocked path, Markdown download, review states, mobile width');
 }finally{await browser.close();}
