@@ -1,0 +1,9 @@
+.source-links{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 18px}
+.source-links a,.paper a,article>a{color:#236b50;font-size:12px;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.paper-list{display:grid;gap:10px;margin:12px 0}
+.paper{background:#f6f8f6;border-radius:8px;padding:14px}
+.paper strong{display:block;line-height:1.45;overflow-wrap:anywhere}
+.paper small{display:block;margin:5px 0}
+.paper p{margin:8px 0}
+article ul{padding-left:20px}
+article li{margin:5px 0}
