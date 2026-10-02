@@ -9,8 +9,9 @@ export default async function handler(req:{method?:string;body?:unknown},res:Res
   return;
  }
  try{
-  const isPlan=!!req.body&&typeof req.body==='object'&&'mode' in req.body&&req.body.mode==='plan';
-  res.status(200).json(isPlan?{plan:await askPlan(req.body)}:{text:await askGemini(req.body)});
+  const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):req.body;
+  const isPlan=!!body&&typeof body==='object'&&'mode' in body&&body.mode==='plan';
+  res.status(200).json(isPlan?{plan:await askPlan(body)}:{text:await askGemini(body)});
  }catch(error){
   const message=error instanceof Error?error.message:'응답을 만들지 못했습니다.';
   res.status(500).json({error:message});

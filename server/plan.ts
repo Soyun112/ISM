@@ -1,5 +1,5 @@
 import {asContext,requestGemini} from './gemini.ts';
-import {contextDescription,inputOf,inputReady,resourcesFor,sourceBasis,storedPlan,validatePlanResponse,type Plan,type PlanningContext,type PlanInput} from '../src/planning.ts';
+import {contextDescription,inputOf,inputReady,resourcesFor,sourceBasis,storedPlan,validatePlanResponse,type Plan,type PlanningContext,type PlanInput,type Resource} from '../src/planning.ts';
 
 export function buildPlanRequest(context:PlanningContext,input:PlanInput,previous:Plan|null,adjustment:string){
  const resources=resourcesFor(context.selected,context.experienceSelection?.topicId);
@@ -24,6 +24,48 @@ export function buildPlanRequest(context:PlanningContext,input:PlanInput,previou
  ].join('\n');
  return {request:{system,contents:[{role:'user',parts:[{text:'주어진 조건에 맞는 활동만 JSON으로 작성해 주세요.'}]}]},resources};
 }
+function parseModelJson(text:string):unknown{
+ const cleaned=text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
+ try{return JSON.parse(cleaned);}catch{/* Gemini sometimes wraps the object in a short sentence. */}
+ const start=cleaned.indexOf('{'),end=cleaned.lastIndexOf('}');
+ if(start<0||end<=start)throw new Error('계획 응답을 읽지 못했습니다. 기록은 그대로 유지됩니다. 다시 시도해 주세요.');
+ try{return JSON.parse(cleaned.slice(start,end+1));}catch{throw new Error('계획 응답을 읽지 못했습니다. 기록은 그대로 유지됩니다. 다시 시도해 주세요.');}
+}
+function plain(value:unknown,fallback:string){
+ const text=(typeof value==='string'?value:fallback).replace(/https?:\/\/\S+/gi,'').replace(/www\.\S+/gi,'').replace(/\b[A-Z]{2,6}\d{3,5}(?:-\d{2})?\b/g,'').replace(/\s+/g,' ').trim().slice(0,500);
+ return text||fallback;
+}
+function normalizePlanPayload(raw:unknown,input:PlanInput,resources:Resource[],previous:Plan|null){
+ const root=Array.isArray(raw)?{activities:raw}:raw;
+ if(!root||typeof root!=='object'||!Array.isArray((root as {activities?:unknown}).activities))throw new Error('AI 계획 형식을 확인하지 못했습니다. 다시 시도해 주세요.');
+ const completed=previous?.activities.filter(activity=>activity.done)||[];
+ const expected=previous?.activities.filter(activity=>!activity.done).map(activity=>activity.id);
+ const allowed=new Set(resources.map(resource=>resource.id));
+ const used=new Map<string,number>();
+ for(const activity of completed)if(input.availableDates.includes(activity.date))used.set(activity.date,(used.get(activity.date)||0)+activity.minutes);
+ const taken=new Set(completed.map(activity=>activity.id));
+ const free=['activity-1','activity-2','activity-3'].filter(id=>!taken.has(id));
+ const incoming=((root as {activities:unknown[]}).activities).filter(item=>item&&typeof item==='object') as Record<string,unknown>[];
+ const chosen=expected?expected.map(id=>incoming.find(item=>item.id===id)||incoming.shift()||{}):incoming.slice(0,free.length);
+ const activities=chosen.flatMap((item,index)=>{
+  const days=[typeof item.date==='string'&&input.availableDates.includes(item.date)?item.date:'',...input.availableDates.filter(date=>date!==item.date)];
+  const requested=Number(item.minutes);
+  const preferred=Number.isInteger(requested)?Math.max(5,Math.min(60,requested,input.minutes)):Math.min(15,input.minutes);
+  let date='',minutes=preferred;
+  for(const day of days){
+   if(!day)continue;
+   const room=input.minutes-(used.get(day)||0);
+   if(room<5)continue;
+   date=day;minutes=Math.min(preferred,room);break;
+  }
+  if(!date)return [];
+  used.set(date,(used.get(date)||0)+minutes);
+  const resourceIds=Array.isArray(item.resourceIds)?item.resourceIds.filter((id):id is string=>typeof id==='string'&&allowed.has(id)).slice(0,3):[];
+  return [{id:expected?expected[index]:free[index],date,minutes,title:plain(item.title,'탐색 활동'),reason:plain(item.reason,'입력한 관심과 가능한 시간을 기준으로 제안한 활동입니다.'),task:plain(item.task,'기록된 자료에서 핵심 한 문장을 찾아 자신의 말로 적습니다.'),completion:plain(item.completion,'한 문장을 적으면 완료입니다.'),resourceIds,question:plain(item.question,'이 활동 후에 아직 궁금한 점은 무엇인가요?')}];
+ });
+ if(!activities.length||(expected&&activities.length!==expected.length))throw new Error('선택한 하루 시간보다 활동 시간이 깁니다. 시간을 줄이거나 날짜를 바꿔 주세요.');
+ return {activities};
+}
 export async function askPlan(body:unknown,apiKey?:string,model?:string):Promise<Plan>{
  if(!body||typeof body!=='object')throw new Error('계획 입력이 없습니다.');
  const source=body as Record<string,unknown>,context=asContext(source.context),input=inputOf(source.input);
@@ -34,8 +76,9 @@ export async function askPlan(body:unknown,apiKey?:string,model?:string):Promise
  if(previous?.activities.every(a=>a.done))throw new Error('모든 활동이 완료되었습니다. 조정할 미완료 활동이 없습니다.');
  const adjustment=typeof source.adjustment==='string'?source.adjustment.slice(0,2000):'';
  const {request,resources}=buildPlanRequest(context,input,previous,adjustment);
- const text=await requestGemini(request,apiKey,model);
- let raw:unknown;try{raw=JSON.parse(text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{throw new Error('계획 응답을 읽지 못했습니다. 기록은 그대로 유지됩니다. 다시 시도해 주세요.');}
- const activities=validatePlanResponse(raw,input,resources,previous);
+ let text:string;
+ try{text=await requestGemini(request,apiKey,model,{responseMimeType:'application/json',temperature:0.4});}
+ catch(error){if(error instanceof Error&&error.message.includes('키가 서버에 없습니다'))throw error;text=await requestGemini(request,apiKey,model);}
+ const activities=validatePlanResponse(normalizePlanPayload(parseModelJson(text),input,resources,previous),input,resources,previous);
  return {id:previous?.id||crypto.randomUUID(),revision:(previous?.revision??-1)+1,createdAt:new Date().toISOString(),input,basis:sourceBasis(context),activities};
 }

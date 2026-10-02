@@ -48,21 +48,24 @@ export async function askGemini(body:unknown,apiKey=process.env.GEMINI_API_KEY||
  return requestGemini(request,apiKey,model);
 }
 
-export async function requestGemini(request:ReturnType<typeof buildGeminiRequest>,apiKey=process.env.GEMINI_API_KEY||'',model=process.env.GEMINI_MODEL||defaultModel){
+export async function requestGemini(request:ReturnType<typeof buildGeminiRequest>,apiKey=process.env.GEMINI_API_KEY||'',model=process.env.GEMINI_MODEL||defaultModel,generationConfig?:Record<string,unknown>){
  if(!apiKey)throw new Error('Gemini API 키가 서버에 없습니다. 기존 GEMINI_API_KEY 설정을 확인해 주세요.');
  const chosen=model.trim()||defaultModel;
  const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(chosen)}:generateContent`,{
   signal:AbortSignal.timeout(45000),
   method:'POST',
   headers:{'Content-Type':'application/json','x-goog-api-key':apiKey},
-  body:JSON.stringify({systemInstruction:{parts:[{text:request.system}]},contents:request.contents})
+  body:JSON.stringify({systemInstruction:{parts:[{text:request.system}]},contents:request.contents,...(generationConfig?{generationConfig}:{})})
  });
  const payload=await response.json().catch(()=>({})) as {error?:{message?:string};candidates?:{content?:{parts?:{text?:string;thought?:boolean}[]}}[]};
  if(!response.ok){
   const message=(payload.error?.message||'Gemini 응답을 받지 못했습니다.').replaceAll(apiKey,'').slice(0,300);
   throw new Error(message);
  }
- const text=(payload.candidates?.[0]?.content?.parts||[]).filter(part=>part.text&&!part.thought).map(part=>part.text).join('').trim();
+ const parts=payload.candidates?.[0]?.content?.parts||[];
+ const visible=parts.filter(part=>part.text&&!part.thought).map(part=>part.text).join('').trim();
+ const thought=parts.filter(part=>part.text&&part.thought).map(part=>part.text).join('').trim();
+ const text=visible||thought;
  if(!text)throw new Error('Gemini가 표시할 답변을 만들지 않았습니다.');
  return text;
 }

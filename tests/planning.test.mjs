@@ -46,6 +46,11 @@ test('planning prompts distinguish directions, sources, familiarity, actual expe
 test('exports work without a plan and include approved links, complete status and notes with a plan',()=>{
  const s=context();assert.match(weekMarkdown(s),/아직 계획을 만들지 않았어요/);s.week.plan=plan();s.week.plan.activities[0].done=true;s.week.plan.activities[0].note='내 한 줄';const md=weekMarkdown(s);assert.match(md,/\[완료\]/);assert.match(md,/내 한 줄/);assert.ok(md.includes(allResources.find(r=>r.id===s.week.plan.activities[0].resourceIds[0]).url));
 });
+test('weekly plan keeps a usable activity when Gemini wraps JSON and adds a link',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async()=>({ok:true,json:async()=>({candidates:[{content:{parts:[{text:'```json\n'+JSON.stringify({note:'무시',activities:[{...raw(),title:'문제 찾기 https://bad.example SWE3022',resourceIds:['만든-자료',resourcesFor([sec.id])[0].id],extra:true}]})+'\n```'}]}}]})});
+ try{const s=context();const result=await askPlan({context:s,input:s.week.input,previous:null},'test-only','test-model');assert.equal(result.activities.length,1);assert.equal(result.activities[0].title.includes('http'),false);assert.deepEqual(result.activities[0].resourceIds,[resourcesFor([sec.id])[0].id]);}finally{globalThis.fetch=original;}
+});
 test('existing Gemini endpoint validates structured plan response without external call',async()=>{
  const original=globalThis.fetch;let sent;
  globalThis.fetch=async(_url,options)=>{sent=JSON.parse(options.body);return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify({activities:[raw()]})}]}}]})};};
