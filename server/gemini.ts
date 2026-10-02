@@ -1,0 +1,55 @@
+import {buildGeminiRequest,type GeminiTurn} from '../src/geminiPrompt.ts';
+import type {ChatContext} from '../src/chat.ts';
+
+const defaultModel='gemini-3.8-flash';
+
+function asContext(value:unknown):ChatContext{
+ const source=value&&typeof value==='object'?value as Record<string,unknown>:{};
+ const strings=(item:unknown)=>Array.isArray(item)?item.filter((entry):entry is string=>typeof entry==='string').slice(0,12):[];
+ const record=(item:unknown)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).filter((entry):entry is [string,string]=>typeof entry[1]==='string')):{};
+ const prep=record(source.prep);
+ const rag=source.rag&&typeof source.rag==='object'?source.rag as Record<string,unknown>:{};
+ const stage=rag.stage==='attack'||rag.stage==='defense'?rag.stage:'normal';
+ return {
+  step:typeof source.step==='number'&&source.step>=0&&source.step<=3?source.step:0,
+  interest:typeof source.interest==='string'?source.interest.slice(0,1000):'',
+  selected:strings(source.selected),
+  reflection:record(source.reflection),
+  prep:{focus:prep.focus||'',gap:prep.gap||'',topic:prep.topic||'',ask:prep.ask||''},
+  rag:{stage,observation:typeof rag.observation==='string'?rag.observation.slice(0,2000):'',planSaved:rag.planSaved===true,studyIds:strings(rag.studyIds)}
+ };
+}
+
+function historyOf(value:unknown):GeminiTurn[]{
+ if(!Array.isArray(value))return [];
+ const turns:GeminiTurn[]=[];
+ for(const item of value){
+  if(!item||typeof item!=='object')continue;
+  const turn=item as Record<string,unknown>;
+  if((turn.role!=='user'&&turn.role!=='assistant')||typeof turn.text!=='string')continue;
+  turns.push({role:turn.role,text:turn.text});
+ }
+ return turns.slice(-6);
+}
+
+export async function askGemini(body:unknown,apiKey=process.env.GEMINI_API_KEY||'',model=process.env.GEMINI_MODEL||defaultModel){
+ if(!apiKey)throw new Error('Gemini API 키가 서버에 없습니다. Vercel 환경 변수 GEMINI_API_KEY를 넣어 주세요.');
+ const source=body&&typeof body==='object'?body as Record<string,unknown>:{};
+ const question=typeof source.question==='string'?source.question.trim():'';
+ if(!question)throw new Error('질문을 입력해 주세요.');
+ const request=buildGeminiRequest(question,asContext(source.context),historyOf(source.history));
+ const chosen=model.trim()||defaultModel;
+ const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(chosen)}:generateContent`,{
+  method:'POST',
+  headers:{'Content-Type':'application/json','x-goog-api-key':apiKey},
+  body:JSON.stringify({systemInstruction:{parts:[{text:request.system}]},contents:request.contents})
+ });
+ const payload=await response.json().catch(()=>({})) as {error?:{message?:string};candidates?:{content?:{parts?:{text?:string;thought?:boolean}[]}}[]};
+ if(!response.ok){
+  const message=(payload.error?.message||'Gemini 응답을 받지 못했습니다.').replaceAll(apiKey,'').slice(0,300);
+  throw new Error(message);
+ }
+ const text=(payload.candidates?.[0]?.content?.parts||[]).filter(part=>part.text&&!part.thought).map(part=>part.text).join('').trim();
+ if(!text)throw new Error('Gemini가 표시할 답변을 만들지 않았습니다.');
+ return text;
+}

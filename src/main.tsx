@@ -4,7 +4,6 @@ import {brand,copy,keywords,mapNodes,nextActions,opinionFields,questions,steps} 
 import {dataCheckedAt,labs,taughtCourses,type Lab} from './data.ts';
 import {recommend} from './recommend.ts';
 import {decode,fresh,invalidate,key,type Rag,type State} from './store.ts';
-import {generateReply} from './chat.ts';
 import {loadRag, ragMarkdown} from './rag.ts';
 import {clearTour, tourMarkdown} from './tour.tsx';
 import {ExperienceView} from './experience.tsx';
@@ -93,8 +92,14 @@ function App(){
   const base=stateRef.current;
   const next={...base,messages:[...base.messages,{role:'user' as const,text:trimmed}]};
   setBusy(true);setChatInput('');setState(next);
-  try{const reply=await generateReply(trimmed,next);setState(current=>({...current,messages:[...current.messages,{role:'assistant',text:reply}]}));}
-  catch{setState(current=>({...current,messages:[...current.messages,{role:'assistant',text:'응답을 만들지 못했습니다. 다시 시도해 주세요.'}]}));}
+  try{
+   const response=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:trimmed,history:base.messages.slice(-6),context:{step:base.step,interest:base.interest,selected:base.selected,reflection:base.reflection,prep:base.prep,rag:base.rag}})});
+   const payload=await response.json().catch(()=>({})) as {text?:string;error?:string};
+   const reply=payload.text||'';
+   if(!response.ok||!reply)throw new Error(payload.error||'응답을 만들지 못했습니다.');
+   setState(current=>({...current,messages:[...current.messages,{role:'assistant',text:reply}]}));
+  }
+  catch(error){const text=error instanceof Error&&error.message?error.message:'응답을 만들지 못했습니다. 다시 시도해 주세요.';setState(current=>({...current,messages:[...current.messages,{role:'assistant',text}]}));}
   finally{setBusy(false);}
  }
  const focusLab=labs.find(l=>l.id===state.prep.focus&&state.selected.includes(l.id));

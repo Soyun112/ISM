@@ -6,6 +6,7 @@ import {recommend} from '../src/recommend.ts';
 import {generateReply} from '../src/chat.ts';
 import {emptyRag,ragMarkdown} from '../src/rag.ts';
 import {labs,taughtCourses} from '../src/data.ts';
+import {buildGeminiRequest} from '../src/geminiPrompt.ts';
 test('BFS and A* return valid identical shortest lengths on varied maps',()=>{
  const maps=[[],exampleWalls,[1,10],Array.from({length:10},(_,i)=>40+i)];
  let seed=73;
@@ -41,3 +42,4 @@ test('recorded lecture sheets stay on the named professors',()=>{
  assert.ok(labs.some(l=>l.professor==='구형준'&&taughtCourses[l.professor]));
 });
 test('prepared rag example stays labeled as an example',async()=>{const s=fresh();s.rag={stage:'attack',observation:'답변이 바뀌었다',planSaved:false,studyIds:[]};assert.match(await generateReply('가짜 문서가 들어가면 답변은 어떻게 바뀌나요?',s),/30일/);assert.match(await generateReply('제외된 문서는 실제 탐지 결과인가요?',s),/미리 지정/);assert.equal(s.rag.observation,'답변이 바뀌었다');});
+test('gemini prompt carries the saved lab and no api key',()=>{const s=fresh();s.interest='보안';s.selected=[labs[22].id];const request=buildGeminiRequest('선택한 연구실은 어떤 차이가 있어?',s,[]);assert.match(request.system,new RegExp(labs[22].name));assert.equal(JSON.stringify(request).includes('GEMINI_API_KEY'),false);assert.equal(request.contents.at(-1).parts[0].text,'선택한 연구실은 어떤 차이가 있어?');});
