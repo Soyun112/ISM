@@ -17,8 +17,11 @@ export function usePlanner(state:State,setState:Dispatch<SetStateAction<State>>)
   lock.current=true;setBusy(true);setError('');
   try{
    const response=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(55000),body:JSON.stringify({mode:'plan',context:chatContextOf(base),input:base.week.input,previous:base.week.plan,adjustment})});
-   const payload=await response.json().catch(()=>({})) as {plan?:unknown;error?:string};
-   if(!response.ok)throw new Error(payload.error||'계획 생성에 실패했습니다. 다시 시도해 주세요.');
+   const raw=await response.text();
+   let payload:{plan?:unknown;error?:unknown}={};
+   try{payload=raw?JSON.parse(raw):{};}catch{payload={error:raw.replace(/\s+/g,' ').slice(0,180)};}
+   const serverError=typeof payload.error==='string'?payload.error:payload.error&&typeof payload.error==='object'&&'message' in payload.error?String((payload.error as {message?:unknown}).message):'';
+   if(!response.ok)throw new Error(serverError||`계획 생성에 실패했습니다. (${response.status})`);
    const candidate=storedPlan(payload.plan);if(!candidate)throw new Error('계획 형식을 확인하지 못했습니다. 기존 기록은 그대로 유지됩니다.');
    if(requestKey(ref.current)!==requestKey(base))throw new Error('생성 중 탐색 기록이나 입력이 바뀌었습니다. 현재 조건으로 다시 만들어 주세요.');
    const plain=(a:Activity)=>({id:a.id,date:a.date,title:a.title,minutes:a.minutes,reason:a.reason,task:a.task,completion:a.completion,resourceIds:a.resourceIds,question:a.question});
